@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#07111f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Bentheim BR">
+<link rel="manifest" href="manifest.json">
+<title>Bentheim Battle Royale</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#07111f;color:#fff;font-family:system-ui,-apple-system,sans-serif;touch-action:none}
+canvas{display:block;width:100%;height:100%}button{font:inherit}
+#menu{position:fixed;inset:0;display:grid;place-items:center;background:radial-gradient(circle at 50% 20%,#19395a,#07111f 65%);z-index:10;padding:20px}
+.panel{width:min(520px,94vw);padding:28px;border:1px solid #ffffff22;border-radius:24px;background:#081426dd;backdrop-filter:blur(12px);box-shadow:0 20px 80px #0008}
+h1{margin:0 0 6px;font-size:clamp(30px,9vw,54px);letter-spacing:-2px}.sub{color:#9fb3c9;margin-bottom:24px}
+.btn{width:100%;border:0;border-radius:15px;padding:15px;margin-top:10px;background:#2c8cff;color:white;font-weight:800;font-size:18px}.btn.secondary{background:#ffffff14}
+#hud{position:fixed;inset:0;display:none;pointer-events:none}.top{position:absolute;top:max(12px,env(safe-area-inset-top));left:12px;right:12px;display:flex;justify-content:space-between;gap:10px}.pill{background:#07111fcc;border:1px solid #ffffff1c;padding:8px 11px;border-radius:12px;font-weight:700}.bars{position:absolute;left:14px;bottom:22px;width:min(230px,55vw)}.bar{height:13px;border-radius:8px;background:#ffffff1a;margin-top:6px;overflow:hidden}.fill{height:100%;width:100%}.hp{background:#35d07f}.shield{background:#3aa7ff}.stat{font-size:12px;color:#b9c8d8}
+#cross{position:absolute;left:50%;top:50%;width:22px;height:22px;transform:translate(-50%,-50%)}#cross:before,#cross:after{content:"";position:absolute;background:#fff8}.x1{left:10px;top:0;width:2px;height:22px}.x2{left:0;top:10px;width:22px;height:2px}
+#stick{position:absolute;left:18px;bottom:22px;width:120px;height:120px;border-radius:50%;background:#ffffff12;border:2px solid #ffffff25;pointer-events:auto}.knob{position:absolute;left:35px;top:35px;width:50px;height:50px;border-radius:50%;background:#ffffff35}
+.actions{position:absolute;right:16px;bottom:20px;display:grid;grid-template-columns:repeat(2,70px);gap:10px;pointer-events:auto}.act{width:70px;height:58px;border-radius:17px;border:1px solid #ffffff25;background:#07111fcc;color:white;font-weight:800}.act.big{grid-column:span 2;width:150px}
+#map{position:absolute;right:14px;top:60px;width:125px;height:125px;border-radius:16px;background:#183622dd;border:2px solid #ffffff35;overflow:hidden}.poi{position:absolute;width:6px;height:6px;border-radius:50%;background:#ffd45c}
+#message{position:absolute;left:50%;top:16%;transform:translateX(-50%);font-size:28px;font-weight:900;text-align:center;text-shadow:0 3px 14px #000;display:none}
+#end{position:fixed;inset:0;display:none;z-index:20;place-items:center;background:#050a12dd}.endbox{text-align:center}.endbox h2{font-size:48px;margin:0}.small{color:#b5c4d4}
+@media(min-width:800px){#stick,.actions{transform:scale(1.05);transform-origin:bottom}.panel{padding:34px}}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="menu">
+  <div class="panel">
+    <h1>BENTHEIM<br>BATTLE ROYALE</h1>
+    <div class="sub">Eigenständiger Mobile-3D-Prototyp · Ziel: 60 FPS</div>
+    <button class="btn" id="play">MATCH STARTEN</button>
+    <button class="btn secondary" id="install">APP INSTALLIEREN</button>
+    <p class="small">Stilisierte, erfundene Battle-Royale-Karte inspiriert von der Grafschaft Bentheim. Keine Original-Assets.</p>
+  </div>
+</div>
+
+<div id="hud">
+  <div class="top"><div class="pill" id="players">Spieler: 24</div><div class="pill" id="zone">Zone: 100%</div><div class="pill" id="fps">FPS: --</div></div>
+  <div id="message"></div>
+  <div id="map"><div class="poi" style="left:30%;top:30%"></div><div class="poi" style="left:70%;top:55%"></div><div class="poi" style="left:48%;top:78%"></div></div>
+  <div id="cross"><div class="x1"></div><div class="x2"></div></div>
+  <div id="stick"><div class="knob"></div></div>
+  <div class="actions">
+    <button class="act" id="jump">SPRUNG</button><button class="act" id="dash">SPRINT</button>
+    <button class="act big" id="pulse">PULS</button>
+  </div>
+  <div class="bars"><div class="stat">ENERGIE</div><div class="bar"><div class="fill hp" id="hp"></div></div><div class="stat">SCHUTZ</div><div class="bar"><div class="fill shield" id="shield"></div></div></div>
+</div>
+
+<div id="end"><div class="endbox"><h2 id="endTitle">SIEG!</h2><p class="small" id="endText"></p><button class="btn" id="again">NOCHMAL SPIELEN</button></div></div>
+
+<script type="module">
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js";
+
+const canvas=document.querySelector("#game"), renderer=new THREE.WebGLRenderer({canvas,antialias:false,powerPreference:"high-performance"});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5)); renderer.setSize(innerWidth,innerHeight,false);
+const scene=new THREE.Scene(); scene.background=new THREE.Color(0x8cc7e8);
+scene.fog=new THREE.Fog(0x8cc7e8,70,210);
+const camera=new THREE.PerspectiveCamera(62,innerWidth/innerHeight,.1,300);
+const clock=new THREE.Clock();
+
+const hemi=new THREE.HemisphereLight(0xdff3ff,0x35552d,2.1); scene.add(hemi);
+const sun=new THREE.DirectionalLight(0xffffff,2.2); sun.position.set(50,100,30); scene.add(sun);
+
+const world=new THREE.Group(); scene.add(world);
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(180,180),new THREE.MeshStandardMaterial({color:0x477d45,roughness:1}));
+ground.rotation.x=-Math.PI/2; world.add(ground);
+
+const grid=new THREE.GridHelper(180,36,0x284e2d,0x315e34); grid.position.y=.03; world.add(grid);
+
+function box(x,z,w,d,h,c){
+ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshStandardMaterial({color:c,roughness:1}));
+ m.position.set(x,h/2,z); world.add(m); return m;
+}
+function tree(x,z){
+ const g=new THREE.Group();
+ const t=new THREE.Mesh(new THREE.CylinderGeometry(.5,.7,3,7),new THREE.MeshStandardMaterial({color:0x6b4b2c}));
+ t.position.y=1.5;
+ const c=new THREE.Mesh(new THREE.ConeGeometry(2.1,4.8,7),new THREE.MeshStandardMaterial({color:0x245f35}));
+ c.position.y=4;
+ g.add(t,c);g.position.set(x,0,z);world.add(g);
+}
+for(let i=0;i<55;i++){let x=(Math.random()-.5)*160,z=(Math.random()-.5)*160;if(Math.hypot(x,z)<25)continue;tree(x,z)}
+for(let i=0;i<35;i++){let x=(Math.random()-.5)*145,z=(Math.random()-.5)*145;box(x,z,3+Math.random()*4,3+Math.random()*4,2+Math.random()*5,0x8b9aa3)}
+// stylized POIs
+box(-32,-28,28,18,7,0x697d8b); box(35,-22,22,25,8,0x8c6c4c);
+box(-38,30,26,20,6,0x9a875c); box(30,34,30,16,6,0x687d70);
+
+const player=new THREE.Group(); scene.add(player);
+const body=new THREE.Mesh(new THREE.CapsuleGeometry(.65,1.2,4,8),new THREE.MeshStandardMaterial({color:0x4c9cff}));
+body.position.y=1.2; player.add(body);
+const head=new THREE.Mesh(new THREE.SphereGeometry(.48,10,8),new THREE.MeshStandardMaterial({color:0xe8b18d}));
+head.position.y=2.15; player.add(head);
+
+const zoneRing=new THREE.Mesh(new THREE.RingGeometry(1,1.2,96),new THREE.MeshBasicMaterial({color:0x63b9ff,transparent:true,opacity:.75,side:THREE.DoubleSide}));
+zoneRing.rotation.x=-Math.PI/2; zoneRing.position.y=.15; scene.add(zoneRing);
+
+let running=false,energy=100,shield=100,zoneR=78,zoneTarget=78,players=24;
+let pos=new THREE.Vector3(0,0,0),velY=0,sprinting=false,last=performance.now(),frames=0,fps=60;
+const keys={};
+addEventListener("keydown",e=>keys[e.code]=true); addEventListener("keyup",e=>keys[e.code]=false);
+let joy={x:0,y:0,active:false}, touchId=null;
+const stick=document.querySelector("#stick"),knob=stick.querySelector(".knob");
+stick.addEventListener("pointerdown",e=>{joy.active=true;touchId=e.pointerId;stick.setPointerCapture(e.pointerId);moveJoy(e)});
+stick.addEventListener("pointermove",e=>{if(joy.active&&e.pointerId===touchId)moveJoy(e)});
+stick.addEventListener("pointerup",()=>{joy.active=false;joy.x=joy.y=0;knob.style.transform="translate(0,0)"});
+function moveJoy(e){const r=stick.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;let x=e.clientX-cx,y=e.clientY-cy;const m=Math.min(42,Math.hypot(x,y));if(m){x=x/m*Math.min(m,42);y=y/m*Math.min(m,42)}joy.x=x/42;joy.y=y/42;knob.style.transform=`translate(${x}px,${y}px)`}
+
+document.querySelector("#dash").onpointerdown=()=>sprinting=true;
+document.querySelector("#dash").onpointerup=()=>sprinting=false;
+document.querySelector("#jump").onpointerdown=()=>{if(pos.y<.05)velY=8};
+document.querySelector("#pulse").onpointerdown=()=>pulse();
+
+function pulse(){
+ const msg=document.querySelector("#message");msg.textContent="PULS AKTIV";msg.style.display="block";
+ setTimeout(()=>msg.style.display="none",600);
+ // visual ring
+ const r=new THREE.Mesh(new THREE.RingGeometry(.5,1,32),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.8,side:THREE.DoubleSide}));
+ r.rotation.x=-Math.PI/2;r.position.copy(player.position);r.position.y=.2;scene.add(r);
+ let t=0; function anim(){t+=.08;r.scale.setScalar(1+t*8);r.material.opacity=.8-t*.12;if(t<6)requestAnimationFrame(anim);else scene.remove(r)} anim();
+}
+
+function reset(){
+ pos.set(0,0,0);energy=100;shield=100;zoneR=78;zoneTarget=78;players=24;running=true;
+ document.querySelector("#menu").style.display="none";document.querySelector("#end").style.display="none";document.querySelector("#hud").style.display="block";
+}
+document.querySelector("#play").onclick=reset;document.querySelector("#again").onclick=reset;
+document.querySelector("#install").onclick=()=>alert("Safari: Teilen → Zum Home-Bildschirm → Als Web-App öffnen → Hinzufügen.");
+
+function update(dt){
+ let mx=joy.x+(keys.KeyD?1:0)-(keys.KeyA?1:0), mz=joy.y+(keys.KeyS?1:0)-(keys.KeyW?1:0);
+ const len=Math.hypot(mx,mz);if(len>1){mx/=len;mz/=len}
+ const speed=sprinting?9:5;
+ pos.x+=mx*speed*dt;pos.z+=mz*speed*dt;
+ velY-=22*dt;pos.y+=velY*dt;if(pos.y<0){pos.y=0;velY=0}
+ pos.x=Math.max(-86,Math.min(86,pos.x));pos.z=Math.max(-86,Math.min(86,pos.z));
+ player.position.copy(pos);
+ camera.position.lerp(new THREE.Vector3(pos.x,pos.y+7,pos.z+10),.12);
+ camera.lookAt(pos.x,pos.y+1.2,pos.z);
+ zoneRing.position.set(0,.15,0);zoneRing.scale.set(zoneR,zoneR,zoneR);
+ zoneTarget=Math.max(18,zoneTarget-dt*.55);zoneR+=(zoneTarget-zoneR)*dt*.04;
+ const dist=Math.hypot(pos.x,pos.z);
+ if(dist>zoneR){energy-=dt*4;if(energy<0)energy=0}
+ if(Math.random()<dt*.08 && players>1)players--;
+ if(players<=1){end(true)}
+ document.querySelector("#players").textContent="Spieler: "+players;
+ document.querySelector("#zone").textContent="Zone: "+Math.round(zoneR)+"m";
+ document.querySelector("#hp").style.width=energy+"%";document.querySelector("#shield").style.width=shield+"%";
+}
+
+function end(win){
+ running=false;document.querySelector("#end").style.display="grid";document.querySelector("#endTitle").textContent=win?"SIEG!":"AUSGESCHIEDEN";
+ document.querySelector("#endText").textContent=win?"Du bist der letzte Spieler.":"Die Energie ist aufgebraucht.";
+}
+
+function loop(){
+ requestAnimationFrame(loop);const now=performance.now(),dt=Math.min(.033,clock.getDelta());
+ frames++;if(now-last>1000){fps=frames;frames=0;last=now;document.querySelector("#fps").textContent="FPS: "+fps}
+ if(running){update(dt)}
+ renderer.render(scene,camera);
+}
+loop();
+
+addEventListener("resize",()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight,false)});
+</script>
+</body>
+</html>
